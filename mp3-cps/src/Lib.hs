@@ -82,7 +82,7 @@ evenoddk = aux
         aux [x] kEven kOdd
             | even x = kEven x  -- if even, add last element to running even
             | odd x = kOdd x -- if odd, add last element to running odd
-        aux (x:xs) kEven kOdd 
+        aux (x:xs) kEven kOdd
             | even x = aux xs (\res -> kEven (res + x)) kOdd  -- if even, add x to the even sum result of aux(xs) and return (apply to previous running)
             | odd x = aux xs kEven (\res -> kOdd (res + x)) -- vice versa
 
@@ -111,12 +111,61 @@ isSimple exp =
         IfExp e1 e2 e3 -> isSimple e1 && isSimple e2 && isSimple e3
         OpExp _ e1 e2 -> isSimple e1 && isSimple e2
         AppExp _ _ -> False
-        
+
 
 --- ### Define `cpsExp` - Overview
 
 cpsExp :: Exp -> Exp -> Integer -> (Exp, Integer)
-cpsExp = undefined
+cpsExp exp k freshVars =
+    case exp of
+        IntExp x -> (AppExp k exp, freshVars)
+        VarExp x -> (AppExp k exp, freshVars)
+        AppExp f e
+            | isSimple e ->     -- f e k 
+                (AppExp (AppExp f e) k, freshVars)
+            | otherwise ->
+                let
+                    (v, freshVars') = gensym freshVars                  -- get fresh v
+                    newK = LamExp v (AppExp (AppExp f (VarExp v)) k)    -- take the evaluated result of e and put into f v(e) k
+                in cpsExp e newK freshVars'                             -- recurse on non-simple argument e
+                -- cpsExp e (\v -> f v k)
+        OpExp op e1 e2
+            | isSimple exp ->   -- k OpExp
+                (AppExp k exp, freshVars)
+
+            | isSimple e1 ->    -- cpsExp e2 (\v -> e1 `op` v)
+                let
+                    (v, freshVars') = gensym freshVars                  -- get fresh v
+                    newK = LamExp v (AppExp k (OpExp op e1 (VarExp v))) -- take the evaluated result of e2 and put into the operation
+                in cpsExp e2 newK freshVars'                            -- recurse on non-simple argument e2
+                
+            | isSimple e2 ->    -- cpsExp e1 (\v -> v `op` e2)
+                let
+                    (v, freshVars') = gensym freshVars                  -- get fresh v
+                    newK = LamExp v (AppExp k (OpExp op (VarExp v) e2)) -- take the evaluated result of e2 and put into the operation
+                in cpsExp e1 newK freshVars'         
+                                   -- recurse on non-simple argument e1
+            | otherwise ->      -- cpsExp e1 (\v1 -> (cpsExp e2 (\v2 -> v1 `op` v2)))
+                let
+                    (v1, freshVars1) = gensym freshVars                 -- get fresh v1
+                    (v2, freshVars2) = gensym freshVars1                -- get fresh v2
+                    nestedK = LamExp v2 (AppExp k (OpExp op (VarExp v1) (VarExp v2)))
+                    (e2Eval, freshVars3) = cpsExp e2 nestedK freshVars2
+                in cpsExp e1 (LamExp v1 e2Eval) freshVars3
+        IfExp cond e1 e2 
+            | isSimple cond -> 
+                let
+                    (e1Eval, freshVars2) = cpsExp e1 k freshVars
+                    (e2Eval, freshVars3) = cpsExp e2 k freshVars2
+                in (IfExp cond e1Eval e2Eval, freshVars2)
+            | otherwise ->
+                let
+                    (v, freshVars1) = gensym freshVars
+                    (e1Eval, freshVars2) = cpsExp e1 k freshVars1
+                    (e2Eval, freshVars3) = cpsExp e2 k freshVars2
+
+                    innerIf = IfExp (VarExp v) e1Eval e2Eval
+                in cpsExp cond (LamExp v innerIf) freshVars3
 
 --- #### Define `cpsExp` for Integer and Variable Expressions
 
@@ -128,5 +177,10 @@ cpsExp = undefined
 
 --- ### Define `cpsDecl`
 
+-- Stmt = Decl String [String] Exp
 cpsDecl :: Stmt -> Stmt
-cpsDecl = undefined
+cpsDecl (Decl funcName args bodyExp) =
+    let
+        newArgs = args ++ ["k"]
+        cpsBodyExp = fst (cpsExp bodyExp (VarExp "k") 1)
+    in Decl funcName newArgs cpsBodyExp
