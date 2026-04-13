@@ -30,8 +30,10 @@ repl env = do
         -- TODO:
         -- Insert line here: If return value is void,
         --                    loop with new env without printing
+        Right (Void, newEnv) -> repl newEnv
         -- Insert line here: Otherwise, print and loop with new env
         --
+        Right (val, newEnv) -> print val >> repl newEnv
         -- The following line may be removed when you're done implementing
         --  the cases above:
         _ -> print "Error in Main.hs: Finish implementing repl"
