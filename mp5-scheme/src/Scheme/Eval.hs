@@ -192,20 +192,13 @@ apply (Func params body closureEnv) args = do
   oldEnv <- get
   let
     bindings = H.fromList (zip params argVals)
-    newEnv = H.union bindings closureEnv  -- left (bindings) overwrite right (closure env)
+    newEnv = H.union bindings (H.union closureEnv oldEnv)  -- left (bindings) overwrite right (closure env)
+  
   put newEnv  -- use new env
   result <- eval body -- get result with new env used
   put oldEnv  -- restore to old env
 
   return result -- output pure version of result
-
-
-
--- eval (Symbol sym) = do 
---   env <- get
---   case H.lookup sym env of
---     Just v -> return v
---     Nothing -> throwError $ UndefSymbolError sym
 
   -- Macro
     -- TODO: implement macro evaluation
