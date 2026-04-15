@@ -18,8 +18,8 @@ type Env = H.HashMap String Val
 data Val = Symbol String
          | Boolean Bool
          | Number Int
-         | Nil     
-         | Pair Val Val   
+         | Nil
+         | Pair Val Val
          | PrimFunc ([Val] -> EvalState Val)  -- Primitive func impl'ed in Haskell
          | Func [String] Val Env              -- Closure
          | Macro [String] Val                 -- Macro
@@ -44,11 +44,11 @@ flattenList v = Left ([], v)
 
 instance Show Val where
   show (Symbol sym)     = sym
-  show (Nil)            = "()"
-  show (Pair v1 v2)     = 
+  show Nil              = "()"
+  show (Pair v1 v2)     =
     case flattenList (Pair v1 v2) of
       Right vl -> "(" ++ unwords (map show vl) ++ ")"
-      Left (p1, p2) -> "(" ++ unwords (map show p1) ++ " . " ++ show p2 ++ ")" 
+      Left (p1, p2) -> "(" ++ unwords (map show p1) ++ " . " ++ show p2 ++ ")"
   show (Number i)       = show i
   show (Boolean b)      = if b then "#t" else "#f"
   show (PrimFunc _)     = "#<primitive>"
