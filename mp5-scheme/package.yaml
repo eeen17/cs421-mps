@@ -29,6 +29,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - mp5-scheme
+    - mtl
 
 tests:
   test:

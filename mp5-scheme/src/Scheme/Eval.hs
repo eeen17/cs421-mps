@@ -1,7 +1,4 @@
-{-# LANGUAGE FlexibleContexts, LambdaCase #-}
-
 module Scheme.Eval where
-
 import Scheme.Core
 
 import Prelude hiding (lookup)
@@ -67,12 +64,16 @@ eval :: Val -> EvalState Val
 
 -- Self-evaluating expressions
 -- TODO: What's self-evaluating?
-eval v@(Number _) = unimplemented "Evaluating numbers"
-eval v@(Boolean _) = unimplemented "Evaluating booleans"
+eval v@(Number _) = return v
+eval v@(Boolean _) = return v
 
 -- Symbol evaluates to the value bound to it
 -- TODO
-eval (Symbol sym) = unimplemented "Evaluating symbols"
+eval (Symbol sym) = do
+  env <- get
+  case H.lookup sym env of
+    Just v -> return v
+    Nothing -> throwError $ UndefSymbolError sym
 
 -- Function closure is also self-evaluating
 eval v@(Func _ _ _) = return v
@@ -97,12 +98,12 @@ eval expr@(Pair v1 v2) = case flattenList expr of
 
     -- quote
     -- TODO
-    evalList [Symbol "quote", e] = unimplemented "Special form `quote`"
+    evalList [Symbol "quote", e] = return e
 
     -- unquote (illegal at surface evaluation)
     -- TODO: since surface-level `unquote` is illegal, all you need to do is
     -- to throw a diagnostic
-    evalList [Symbol "unquote", e] = unimplemented "Special form `unquote`"
+    evalList [Symbol "unquote", e] = throwError $ UnquoteNotInQuasiquote e
 
     -- quasiquote
     evalList [Symbol "quasiquote", e] = evalQuasi 1 e where
@@ -120,24 +121,51 @@ eval expr@(Pair v1 v2) = case flattenList expr of
 
     -- cond
     -- TODO: Handle `cond` here. Use pattern matching to match the syntax
+    evalList ((Symbol "cond"):conds) = do
+        -- env <- get
+        condExpList <- mapM getListOf2 conds
+        if null condExpList then throwError $ InvalidSpecialForm "cond" expr
+        else aux condExpList
+          where
+            aux :: [(Val, Val)] -> EvalState Val
+            aux [] = return Void
+            aux [(Symbol "else", exp)] = eval exp
+            aux ((Symbol "else", _):_) = throwError $ InvalidSpecialForm "cond" expr
+            aux ((cond, exp):rest) = do
+              condVal <- eval cond
+              case condVal of
+                Boolean False -> aux rest
+                _ -> eval exp 
 
     -- let
     -- TODO: Handle `let` here. Use pattern matching to match the syntax
 
     -- lambda
     -- TODO: Handle `lambda` here. Use pattern matching to match the syntax
+    evalList [Symbol "lambda", params, body] =
+      do env <- get
+         paramlist <- getList params
+         (\paramVal -> Func paramVal body env) <$> mapM getSym paramlist
+        --  val <- (\paramVal -> Func paramVal body env) <$> mapM getSym paramlist
+        --  return val
+        -- same thing but redundant return
+    -- TODO: argument number mismatch?
 
     -- define function
-    evalList [Symbol "define", Pair (Symbol fname) args, body] =
+    evalList [Symbol "define", Pair (Symbol fname) params, body] =
       do env <- get
-         argList <- getList args
-         val <- (\argVal -> Func argVal body env) <$> mapM getSym argList
+         paramlist <- getList params
+         val <- (\paramVal -> Func paramVal body env) <$> mapM getSym paramlist
          modify $ H.insert fname val
          return Void
 
     -- define variable
     -- TODO: Handle `define` for variables here. Use pattern matching
     -- to match the syntax
+    evalList [Symbol "define", Symbol var, exp] =
+      do val <- eval exp
+         modify $ H.insert var val
+         return Void
 
     -- define-macro
     -- TODO: Handle `define-macro` here. Use pattern matching to match
@@ -158,6 +186,26 @@ apply :: Val -> [Val] -> EvalState Val
   -- Function
     -- TODO: implement function application
     -- Use do-notation!
+
+apply (Func params body closureEnv) args = do
+  argVals <- mapM eval args
+  oldEnv <- get
+  let
+    bindings = H.fromList (zip params argVals)
+    newEnv = H.union bindings closureEnv  -- left (bindings) overwrite right (closure env)
+  put newEnv  -- use new env
+  result <- eval body -- get result with new env used
+  put oldEnv  -- restore to old env
+
+  return result -- output pure version of result
+
+
+
+-- eval (Symbol sym) = do 
+--   env <- get
+--   case H.lookup sym env of
+--     Just v -> return v
+--     Nothing -> throwError $ UndefSymbolError sym
 
   -- Macro
     -- TODO: implement macro evaluation

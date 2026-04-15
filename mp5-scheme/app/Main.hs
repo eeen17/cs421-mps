@@ -36,7 +36,6 @@ repl env = do
         Right (val, newEnv) -> print val >> repl newEnv
         -- The following line may be removed when you're done implementing
         --  the cases above:
-        _ -> print "Error in Main.hs: Finish implementing repl"
   repl env                                            -- Loop with old env
 
 main :: IO ()
