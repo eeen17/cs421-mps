@@ -139,6 +139,17 @@ eval expr@(Pair v1 v2) = case flattenList expr of
 
     -- let
     -- TODO: Handle `let` here. Use pattern matching to match the syntax
+    evalList [Symbol "let", assigns, body] = do
+      oldEnv <- get
+      assignList <- getList assigns
+      nameExpAssignList <- mapM getBinding assignList
+      let
+        assignBindings = H.fromList nameExpAssignList
+        newEnv = H.union assignBindings oldEnv
+      put newEnv
+      result <- eval body
+      put oldEnv
+      return result
 
     -- lambda
     -- TODO: Handle `lambda` here. Use pattern matching to match the syntax
@@ -170,6 +181,11 @@ eval expr@(Pair v1 v2) = case flattenList expr of
     -- define-macro
     -- TODO: Handle `define-macro` here. Use pattern matching to match
     -- the syntax
+    evalList [Symbol "define-macro", Pair (Symbol fname) params, exp] = do
+         paramlist <- getList params
+         val <- (\paramVal -> Macro paramVal exp) <$> mapM getSym paramlist
+         modify $ H.insert fname val
+         return Void
 
     -- invalid use of keyword, throw a diagnostic
     evalList (Symbol sym : _) | elem sym keywords = invalidSpecialForm sym
@@ -186,7 +202,6 @@ apply :: Val -> [Val] -> EvalState Val
   -- Function
     -- TODO: implement function application
     -- Use do-notation!
-
 apply (Func params body closureEnv) args = do
   argVals <- mapM eval args
   oldEnv <- get
@@ -203,6 +218,16 @@ apply (Func params body closureEnv) args = do
   -- Macro
     -- TODO: implement macro evaluation
     -- Use do-notation!
+apply (Macro params body) args = do
+  oldEnv <- get
+  let
+    bindings = H.fromList (zip params args)
+    newEnv = H.union bindings oldEnv
+  put newEnv
+  expanded <- eval body
+  put oldEnv
+  eval expanded
+
 
   -- Primitive
 apply (PrimFunc p) args =
